@@ -41,9 +41,9 @@ st.write("결측치 처리 방식(제거, 중앙값 대체, 선형보간법)과 
 # 데이터 불러오기 함수 (상위 폴더의 temperature_utf8.csv 경로 지정)
 @st.cache_data
 def load_data():
-    file_path = os.path.join(os.path.dirname(__file__), '..', 'temperature_utf8.csv')
+    file_path = os.path.join(os.path.dirname(__file__), '..', 'temperature.csv')
     if not os.path.exists(file_path):
-        file_path = 'temperature_utf8.csv'
+        file_path = 'temperature.csv'
         
     df = pd.read_csv(file_path, encoding="utf-8-sig")
     df['parsed_date'] = pd.to_datetime(df['일시'], format='%b-%y')
