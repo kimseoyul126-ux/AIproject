@@ -6,3 +6,6 @@ streamlit-folium
 pandas
 matplotlib
 plotly
+
+numpy
+scikit-learn
