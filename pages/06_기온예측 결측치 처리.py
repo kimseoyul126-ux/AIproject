@@ -9,7 +9,7 @@ from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor
 
 # Streamlit 페이지 설정
-st.set_page_config(page_title="기온 예측 및 결측치/알고리즘 비교 대시보드", layout="wide")
+st.set_page_config(page_title="기온 예측 및 결측치·알고리즘 비교 대시보드", layout="wide")
 
 # -------------------------------------------------------------
 # 🛠️ 폰트 깨짐 방지 및 나눔폰트 강제 적용 설정
@@ -38,14 +38,18 @@ set_korean_font()
 st.title("🌡️ 기온 예측 및 결측치·알고리즘 비교 대시보드")
 st.write("결측치 처리 방식(제거, 중앙값 대체, 선형보간법)과 머신러닝 알고리즘에 따른 미래 기온 예측 결과를 비교하고 시각화합니다.")
 
-# 데이터 불러오기 함수 (상위 폴더의 temperature_utf8.csv 경로 지정)
+# 데이터 불러오기 함수 (cp949 인코딩 적용 및 상위 폴더 경로 지정)
 @st.cache_data
 def load_data():
+    # 현재 파일(pages/app.py) 기준 상위 폴더(..)에 있는 temperature.csv 경로 지정
     file_path = os.path.join(os.path.dirname(__file__), '..', 'temperature.csv')
+    
+    # 파일이 상위 폴더에 없거나 같은 경로에 있는 경우 대비 예외 처리 경로 설정
     if not os.path.exists(file_path):
         file_path = 'temperature.csv'
         
-    df = pd.read_csv(file_path, encoding="utf-8-sig")
+    # cp949 인코딩을 사용하여 한글 깨짐 방지
+    df = pd.read_csv(file_path, encoding="cp949")
     df['parsed_date'] = pd.to_datetime(df['일시'], format='%b-%y')
     df['Year'] = df['parsed_date'].dt.year
     df['Month'] = df['parsed_date'].dt.month
@@ -73,13 +77,13 @@ selected_month = st.sidebar.selectbox(
     format_func=lambda x: month_names[x]
 )
 
-# 2. 결측치 처리 방식 선택 (요청사항 2번)
+# 2. 결측치 처리 방식 선택
 impute_option = st.sidebar.selectbox(
     "결측치 처리 방식 선택",
     options=["1. 제거 (Drop)", "2. 중앙값으로 대체 (Median)", "3. 선형보간법 (Interpolate)"]
 )
 
-# 3. 알고리즘 선택 (요청사항 3번: 복수 선택 또는 단일 선택 비교 가능)
+# 3. 알고리즘 선택
 st.sidebar.markdown("---")
 st.sidebar.subheader("🤖 머신러닝 알고리즘 선택")
 use_lr = st.sidebar.checkbox("선형 회귀 (Linear Regression)", value=True)
@@ -100,7 +104,7 @@ target_future_year = st.sidebar.number_input(
 month_df = df[df['Month'] == selected_month].sort_values('Year').copy()
 
 # -------------------------------------------------------------
-# 결측치 처리 로직 적용 (요청사항 1, 2번)
+# 결측치 처리 로직 적용
 # -------------------------------------------------------------
 original_missing_count = month_df['평균기온(℃)'].isnull().sum()
 
