@@ -38,11 +38,17 @@ set_korean_font()
 st.title("🌡️ 기온 예측 및 머신러닝 알고리즘 비교 대시보드")
 st.write("1907년부터 현재까지의 기온 데이터를 기반으로 특정 개월의 과거 추이를 분석하고, 미래 연도의 평균기온을 다양한 머신러닝 모델로 예측합니다.")
 
-# 데이터 불러오기 함수 (인코딩 오류 원천 차단된 temperature_utf8.csv 사용)
+# 데이터 불러오기 함수 (상위 폴더의 temperature_utf8.csv 경로 지정)
 @st.cache_data
 def load_data():
-    # utf-8-sig 인코딩으로 저장된 파일을 읽어옵니다.
-    df = pd.read_csv("temperature_utf8.csv", encoding="utf-8-sig")
+    # 현재 파일(pages/app.py) 기준 상위 폴더(..)에 있는 파일 경로 지정
+    file_path = os.path.join(os.path.dirname(__file__), '..', 'temperature_utf8.csv')
+    
+    # 파일이 상위 폴더에 없거나 루트에 있는 경우 대비 예외 처리 경로 설정
+    if not os.path.exists(file_path):
+        file_path = 'temperature_utf8.csv'
+        
+    df = pd.read_csv(file_path, encoding="utf-8-sig")
     df['parsed_date'] = pd.to_datetime(df['일시'], format='%b-%y')
     df['Year'] = df['parsed_date'].dt.year
     df['Month'] = df['parsed_date'].dt.month
