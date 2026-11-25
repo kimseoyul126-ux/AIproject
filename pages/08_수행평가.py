@@ -235,10 +235,15 @@ if "직접 입력" in selected_dessert:
       placeholder="예: 에그타르트, 크루아상, 마카롱, 꽈배기, 카스테라, 바게트...",
   ).strip()
 
+# 버튼 클릭 후 실행 결과 저장용 변수 (그래프 연동을 위해 활용)
+active_keywords_for_chart = []
+search_performed = False
+
 # 추천 버튼
 if st.button(
     "🎉 내 조건에 딱 맞는 빵집 찾기!", use_container_width=True, type="primary"
 ):
+  search_performed = True
   is_custom = "직접 입력" in selected_dessert
 
   if is_custom and not custom_bread:
@@ -250,6 +255,7 @@ if st.button(
       pool = [s for s in active_bakeries if s["district"] == selected_district]
 
     if is_custom:
+      active_keywords_for_chart = [custom_bread]
       clean_kw = custom_bread.replace(" ", "")
       exact_matches = [
           s for s in pool if clean_kw in s["name"].replace(" ", "")
@@ -265,7 +271,8 @@ if st.button(
         )
         for idx, store in enumerate(exact_matches[:6], 1):
           with st.container(border=True):
-            st.markdown(f"**{idx}. 🥖 {store['name']}**")
+            # 🔥 가게 이름을 크고 굵게 강조!
+            st.markdown(f"### {idx}. 🥖 {store['name']}")
             st.markdown(
                 f"📍 위치 주소: `{store['address']}` ({store['district']})"
             )
@@ -282,7 +289,8 @@ if st.button(
           picked = random.sample(pool, min(4, len(pool)))
           for idx, store in enumerate(picked, 1):
             with st.container(border=True):
-              st.markdown(f"**{idx}. 🥐 {store['name']}**")
+              # 🔥 가게 이름을 크고 굵게 강조!
+              st.markdown(f"### {idx}. 🥐 {store['name']}")
               st.markdown(f"📍 위치 주소: `{store['address']}`")
               st.link_button(
                   f"🗺️ '{store['name']}' 메뉴 확인하기",
@@ -296,6 +304,7 @@ if st.button(
 
     else:
       dessert_info = DESSERT_DATA[selected_dessert]
+      active_keywords_for_chart = dessert_info["keywords"]
       matched_stores = [
           s
           for s in pool
@@ -317,7 +326,8 @@ if st.button(
             selected_district == "전체 (서울 어디든 좋아!)"
             or dessert_info["default_dist"] == selected_district
         ):
-          st.markdown(f"**📍 추천 장소:** `{dessert_info['default_name']}`")
+          # 🔥 대표 가게 이름을 크고 굵게 강조!
+          st.markdown(f"### 🏆 {dessert_info['default_name']}")
           st.markdown(f"**📍 위치 주소:** `{dessert_info['fallback_addr']}`")
           st.success(
               "✅ `Bbang.csv` 공공데이터 확인 완료! 현재 **정상 영업 중**인"
@@ -331,7 +341,8 @@ if st.button(
           )
         elif matched_stores:
           top_store = matched_stores[0]
-          st.markdown(f"**📍 추천 장소:** `{top_store['name']}`")
+          # 🔥 찾은 가게 이름을 크고 굵게 강조!
+          st.markdown(f"### 🏆 {top_store['name']}")
           st.markdown(f"**📍 위치 주소:** `{top_store['address']}`")
           st.success(
               f"✅ `{selected_district}` 내에서 조건에 맞는 영업 중인 빵집을"
@@ -366,44 +377,81 @@ if st.button(
         picked = random.sample(pool, min(4, len(pool)))
         for idx, store in enumerate(picked, 1):
           with st.container(border=True):
-            st.markdown(f"**{idx}. 🥖 {store['name']}**")
+            # 🔥 리스트 가게 이름을 크고 굵게 강조!
+            st.markdown(f"### {idx}. 🥖 {store['name']}")
             st.markdown(f"📍 주소: `{store['address']}`")
             st.link_button(
                 "🗺️ 네이버 지도 보기",
                 make_naver_map_url(store["name"], store["district"]),
             )
 
-# --- 📊 추가된 데이터 시각화(그래프) 섹션 ---
+# --- 📊 입력한 디저트에 따라 실시간으로 변하는 그래프 섹션 ---
 st.divider()
-st.subheader("📊 한눈에 보는 서울 빵집 성지 TOP 10 그래프!")
-st.markdown(
-    "`Bbang.csv` 데이터를 실시간으로 분석해 봤어! 서울에서 **현재 영업 중인"
-    " 빵집이 가장 많은 구 TOP 10**이야 🏆"
+
+# 사용자가 어떤 디저트를 골랐거나 입력했느냐에 따라 그래프 제목과 데이터를 동적으로 변경!
+current_selection_name = (
+    selected_dessert.split(" ")[-1]
+    if "직접 입력" not in selected_dessert
+    else (custom_bread if custom_bread else "선택한 디저트")
+)
+
+st.subheader(
+    f"📊 '{current_selection_name}' 관련 빵집이 가장 많은 서울 핫플 TOP 10!"
 )
 
 if active_bakeries:
-  # 파이썬 기본 딕셔너리로 자치구별 영업 빵집 수 집계
+  # 만약 사용자가 특정 디저트를 골랐다면, 해당 키워드가 포함된 가게들만 필터링하여 구별 집계!
+  filtered_for_chart = active_bakeries
+  if "직접 입력" not in selected_dessert and DESSERT_DATA[selected_dessert][
+      "keywords"
+  ]:
+    kws = DESSERT_DATA[selected_dessert]["keywords"]
+    filtered_for_chart = [
+        s for s in active_bakeries if any(kw in s["name"] for kw in kws)
+    ]
+  elif "직접 입력" in selected_dessert and custom_bread:
+    clean_kws = custom_bread.replace(" ", "")
+    filtered_for_chart = [
+        s for s in active_bakeries if clean_kws in s["name"].replace(" ", "")
+    ]
+
+  # 필터링된 결과가 너무 적으면 전체 서울 기준으로 보여주되 안내 문구 출력
+  is_fallback_to_all = False
+  if len(filtered_for_chart) < 3:
+    filtered_for_chart = active_bakeries
+    is_fallback_to_all = True
+
+  # 자치구별 집계
   district_counts = {}
-  for store in active_bakeries:
+  for store in filtered_for_chart:
     d = store["district"]
     if d != "기타":
       district_counts[d] = district_counts.get(d, 0) + 1
 
-  # 빵집 수 많은 순으로 TOP 10 정렬
   top10 = sorted(district_counts.items(), key=lambda x: x[1], reverse=True)[:10]
   chart_data = {gu: count for gu, count in top10}
 
-  # 스트림릿 기본 막대그래프 출력
-  st.bar_chart(chart_data, color="#FF8C42")
+  if is_fallback_to_all:
+    st.markdown(
+        f"💡 '{current_selection_name}' 키워드와 정확히 일치하는 매장 데이터가"
+        " 적어서, 전체 제과점 기준 자치구별 분포를 보여줄게! 📈"
+    )
+  else:
+    st.markdown(
+        f"✨ 서울 전체에서 **'{current_selection_name}'** 관련 빵집이 가장 많이"
+        " 포진해 있는 지역 순위야 🏆"
+    )
 
-  # 재미있는 인사이트 한 줄 요약
-  top1_gu, top1_cnt = top10[0]
-  top2_gu, top2_cnt = top10[1]
-  st.info(
-      f"💡 **데이터 분석 결과:** 서울 전체 영업 중인 제과점"
-      f" **{len(active_bakeries):,}곳** 중 1위는 **{top1_gu}({top1_cnt}개)**,"
-      f" 2위는 **{top2_gu}({top2_cnt}개)**야! 빵지순례 갈 때 참고해 봐 😎"
-  )
+  # 스트림릿 막대그래프 출력 (디저트에 따라 막대 색상이나 데이터가 실시간으로 바뀜!)
+  st.bar_chart(chart_data, color="#FF6B6B")
+
+  if top10:
+    top_gu, top_cnt = top10[0]
+    st.info(
+        f"🔥 **인사이트:** '{current_selection_name}' 관련 빵집은"
+        f" **{top_gu}**({top_cnt개})에 가장 많이 모여있어! 이쪽으로 빵지순례"
+        " 계획을 짜보면 어떨까? 😎"
+    )
 
 st.divider()
 st.caption(
