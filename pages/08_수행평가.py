@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import urllib.parse
 import streamlit as st
 
 # 페이지 기본 설정
@@ -45,8 +46,24 @@ def load_active_bakeries():
   return active_list
 
 
-# 12가지 디저트 유형별 대표 키워드 및 정보 정의
+# 네이버 지도 검색 링크 생성 함수
+def make_naver_map_url(store_name, district=""):
+  query = f"서울 {district} {store_name}".strip()
+  encoded = urllib.parse.quote(query)
+  return f"https://map.naver.com/p/search/{encoded}"
+
+
+# 12가지 기본 추천 디저트 유형
 DESSERT_DATA = {
+    "✍️ 직접 입력할래요! (원하는 빵·디저트 검색)": {
+        "keywords": [],
+        "display_name": "나만의 맞춤형 디저트 찾기",
+        "default_name": "",
+        "default_dist": "",
+        "history": "내가 지금 딱 먹고 싶은 그 빵을 찾아보자! 🔍",
+        "signature": "직접 입력한 최애 디저트",
+        "fallback_addr": "",
+    },
     "🍦 모나카 아이스크림 & 사라다빵 (레트로)": {
         "keywords": ["태극당", "사라다", "모나카"],
         "display_name": "레트로 감성 모나카 & 사라다빵 맛집",
@@ -190,9 +207,8 @@ SEOUL_DISTRICTS = [
 # --- UI 화면 구성 ---
 st.title("🥐 서울 찐 제과점 맞춤 추천소 🍰")
 st.markdown(
-    "1️⃣ 먹고 싶은 **디저트 종류**를 고르고,\n"
-    "2️⃣ 가고 싶은 **지역(구)**을 선택하면,\n"
-    "**`Bbang.csv` 공공데이터**에서 조건에 딱 맞는 빵집을 찾아줄게! ✨"
+    "먹고 싶은 **디저트 종류**를 고르거나 **직접 입력**해 봐! ✍️\n"
+    "선택한 **지역(구)** 안에서 실제 영업 중인 빵집을 찾아줄게 ✨"
 )
 st.divider()
 
@@ -211,114 +227,183 @@ with col2:
       "📍 2. 가고 싶은 지역(구) 선택", options=SEOUL_DISTRICTS
   )
 
+# 직접 입력 옵션 선택 시 텍스트 입력창 표시
+custom_bread = ""
+if "직접 입력" in selected_dessert:
+  custom_bread = st.text_input(
+      "✍️ 찾고 싶은 빵이나 디저트 이름을 적어줘!",
+      placeholder="예: 에그타르트, 크루아상, 마카롱, 꽈배기, 카스테라, 바게트...",
+  ).strip()
+
 # 추천 버튼
 if st.button(
     "🎉 내 조건에 딱 맞는 빵집 찾기!", use_container_width=True, type="primary"
 ):
-  dessert_info = DESSERT_DATA[selected_dessert]
+  is_custom = "직접 입력" in selected_dessert
 
-  # 필터링 로직: 1) 선택한 지역구에 속하고, 2) 디저트 키워드가 포함되거나 일반 빵집들
-  matched_stores = []
-
-  # 사용자가 특정 구를 골랐을 때
-  if selected_district != "전체 (서울 어디든 좋아!)":
-    district_filtered = [
-        s for s in active_bakeries if s["district"] == selected_district
-    ]
-
-    # 그 구 안에서 디저트 키워드가 들어가는 가게 먼저 찾기
-    for store in district_filtered:
-      if any(kw in store["name"] for kw in dessert_info["keywords"]):
-        matched_stores.append(store)
-
-    # 만약 키워드에 딱 맞는 유명 가게가 그 구에 없더라도, 해당 지역의 영업 중인 빵집들을 대안으로 활용
-    if not matched_stores:
-      matched_stores = district_filtered
-
+  if is_custom and not custom_bread:
+    st.warning("👀 찾고 싶은 빵 이름을 먼저 입력해 줘!")
   else:
-    # 전체를 골랐을 때는 전국구 유명 본점 혹은 전체 중 키워드 매칭
-    for store in active_bakeries:
-      if any(kw in store["name"] for kw in dessert_info["keywords"]):
-        matched_stores.append(store)
+    if selected_district == "전체 (서울 어디든 좋아!)":
+      pool = active_bakeries
+    else:
+      pool = [s for s in active_bakeries if s["district"] == selected_district]
 
-  st.balloons()
-  st.subheader(
-      f"🏆 '{selected_dessert.split(' ')[-1]}' 찐 맛집 추천 결과"
-      f" ({selected_district})"
-  )
+    if is_custom:
+      clean_kw = custom_bread.replace(" ", "")
+      exact_matches = [
+          s for s in pool if clean_kw in s["name"].replace(" ", "")
+      ]
 
-  # 1) 대표 추천 가게 보여주기 (해당 구에 유명 본점이 있으면 최우선 표시)
-  best_match = None
+      st.balloons()
+      st.subheader(f"🔍 '{custom_bread}' 검색 결과 ({selected_district})")
+
+      if exact_matches:
+        st.success(
+            f"🎉 `{selected_district}`에서 **'{custom_bread}'** 관련 영업 중인"
+            f" 가게 **{len(exact_matches)}곳**을 찾았어!"
+        )
+        for idx, store in enumerate(exact_matches[:6], 1):
+          with st.container(border=True):
+            st.markdown(f"**{idx}. 🥖 {store['name']}**")
+            st.markdown(
+                f"📍 위치 주소: `{store['address']}` ({store['district']})"
+            )
+            st.link_button(
+                "🗺️ 네이버 지도로 위치·후기 보기",
+                make_naver_map_url(store["name"], store["district"]),
+            )
+      else:
+        st.info(
+            f"💡 상호명에 직접 '{custom_bread}'가 들어간 곳은 없지만, 지금"
+            f" **`{selected_district}`에서 영업 중인 인기 제과점**을 골라봤어!"
+        )
+        if pool:
+          picked = random.sample(pool, min(4, len(pool)))
+          for idx, store in enumerate(picked, 1):
+            with st.container(border=True):
+              st.markdown(f"**{idx}. 🥐 {store['name']}**")
+              st.markdown(f"📍 위치 주소: `{store['address']}`")
+              st.link_button(
+                  f"🗺️ '{store['name']}' 메뉴 확인하기",
+                  make_naver_map_url(store["name"], store["district"]),
+              )
+        else:
+          st.warning(
+              f"😢 `{selected_district}` 데이터에 등록된 가게가 없어. 다른"
+              " 지역을 골라볼래?"
+          )
+
+    else:
+      dessert_info = DESSERT_DATA[selected_dessert]
+      matched_stores = [
+          s
+          for s in pool
+          if any(kw in s["name"] for kw in dessert_info["keywords"])
+      ]
+
+      st.balloons()
+      st.subheader(
+          f"🏆 '{selected_dessert.split(' ')[-1]}' 찐 맛집 추천"
+          f" ({selected_district})"
+      )
+
+      with st.container(border=True):
+        st.markdown(f"**✨ 디저트 테마:** {dessert_info['display_name']}")
+        st.markdown(f"**📖 설명 및 역사:** {dessert_info['history']}")
+        st.markdown(f"**😋 대표 메뉴:** {dessert_info['signature']}")
+
+        if (
+            selected_district == "전체 (서울 어디든 좋아!)"
+            or dessert_info["default_dist"] == selected_district
+        ):
+          st.markdown(f"**📍 추천 장소:** `{dessert_info['default_name']}`")
+          st.markdown(f"**📍 위치 주소:** `{dessert_info['fallback_addr']}`")
+          st.success(
+              "✅ `Bbang.csv` 공공데이터 확인 완료! 현재 **정상 영업 중**인"
+              " 대표 랜드마크야. 🏪"
+          )
+          st.link_button(
+              "🗺️ 네이버 지도로 길찾기",
+              make_naver_map_url(
+                  dessert_info["default_name"], dessert_info["default_dist"]
+              ),
+          )
+        elif matched_stores:
+          top_store = matched_stores[0]
+          st.markdown(f"**📍 추천 장소:** `{top_store['name']}`")
+          st.markdown(f"**📍 위치 주소:** `{top_store['address']}`")
+          st.success(
+              f"✅ `{selected_district}` 내에서 조건에 맞는 영업 중인 빵집을"
+              " 찾았어! 🥖"
+          )
+          st.link_button(
+              "🗺️ 네이버 지도로 길찾기",
+              make_naver_map_url(top_store["name"], top_store["district"]),
+          )
+        else:
+          st.markdown(
+              f"**📍 추천 장소:** `{dessert_info['default_name']} (타 지역"
+              " 본점)`"
+          )
+          st.markdown(f"**📍 위치 주소:** `{dessert_info['fallback_addr']}`")
+          st.info(
+              f"💡 선택하신 `{selected_district}` 안에는 해당 테마의 대표 본점이"
+              " 없어서 서울 랜드마크 본점을 먼저 소개해 줄게! ✨"
+          )
+          st.link_button(
+              "🗺️ 네이버 지도로 길찾기",
+              make_naver_map_url(
+                  dessert_info["default_name"], dessert_info["default_dist"]
+              ),
+          )
+
+      if selected_district != "전체 (서울 어디든 좋아!)" and pool:
+        st.divider()
+        st.subheader(
+            f"🗺️ '{selected_district}'에서 지금 갈 수 있는 다른 빵집들!"
+        )
+        picked = random.sample(pool, min(4, len(pool)))
+        for idx, store in enumerate(picked, 1):
+          with st.container(border=True):
+            st.markdown(f"**{idx}. 🥖 {store['name']}**")
+            st.markdown(f"📍 주소: `{store['address']}`")
+            st.link_button(
+                "🗺️ 네이버 지도 보기",
+                make_naver_map_url(store["name"], store["district"]),
+            )
+
+# --- 📊 추가된 데이터 시각화(그래프) 섹션 ---
+st.divider()
+st.subheader("📊 한눈에 보는 서울 빵집 성지 TOP 10 그래프!")
+st.markdown(
+    "`Bbang.csv` 데이터를 실시간으로 분석해 봤어! 서울에서 **현재 영업 중인"
+    " 빵집이 가장 많은 구 TOP 10**이야 🏆"
+)
+
+if active_bakeries:
+  # 파이썬 기본 딕셔너리로 자치구별 영업 빵집 수 집계
+  district_counts = {}
   for store in active_bakeries:
-    if dessert_info["default_name"].replace(" ", "") in store["name"].replace(
-        " ", ""
-    ) or any(kw in store["name"] for kw in dessert_info["keywords"]):
-      if (
-          selected_district == "전체 (서울 어디든 좋아🍀)"
-          or store["district"] == selected_district
-      ):
-        best_match = store
-        break
+    d = store["district"]
+    if d != "기타":
+      district_counts[d] = district_counts.get(d, 0) + 1
 
-  with st.container(border=True):
-    st.markdown(f"**✨ 디저트 테마:** {dessert_info['display_name']}")
-    st.markdown(f"**📖 설명 및 역사:** {dessert_info['history']}")
-    st.markdown(f"**😋 대표 메뉴:** {dessert_info['signature']}")
+  # 빵집 수 많은 순으로 TOP 10 정렬
+  top10 = sorted(district_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+  chart_data = {gu: count for gu, count in top10}
 
-    # 사용자가 고른 지역에 명실상부한 대표 매장이 있다면 해당 주소 표시, 아니면 일치하는 목록 중 선택
-    if (
-        selected_district == "전체 (서울 어디든 좋아!)"
-        or dessert_info["default_dist"] == selected_district
-    ):
-      st.markdown(f"**📍 추천 장소:** `{dessert_info['default_name']}`")
-      st.markdown(f"**📍 위치 주소:** `{dessert_info['fallback_addr']}`")
-      st.success(
-          "✅ `Bbang.csv` 공공데이터 확인 완료! 현재 **정상 영업 중**인 대표"
-          " 랜드마크야. 🏪"
-      )
-    elif matched_stores:
-      # 사용자가 고른 구 안에 매칭되는 다른 지점이나 빵집이 있는 경우
-      top_store = matched_stores[0]
-      st.markdown(f"**📍 추천 장소:** `{top_store['name']}`")
-      st.markdown(f"**📍 위치 주소:** `{top_store['address']}`")
-      st.success(
-          f"✅ 선택하신 `{selected_district}` 내에서 조건에 맞는 영업 중인 빵집을"
-          " 찾았어! 🥖"
-      )
-    else:
-      st.markdown(
-          f"**📍 추천 장소:** `{dessert_info['default_name']} (타 지역 본점)"
-          "`"
-      )
-      st.markdown(f"**📍 위치 주소:** `{dessert_info['fallback_addr']}`")
-      st.info(
-          f"💡 아쉽게도 선택하신 `{selected_district}` 안에는 해당 디저트 전문"
-          " 단독 지점이 없어서, 서울 대표 본점 정보를 알려줄게! ✨"
-      )
+  # 스트림릿 기본 막대그래프 출력
+  st.bar_chart(chart_data, color="#FF8C42")
 
-  # 2) 선택한 지역구에 영업 중인 다른 추천 빵집들도 함께 리스트업
-  if selected_district != "전체 (서울 어디든 좋아!)":
-    st.divider()
-    st.subheader(
-        f"🗺️ '{selected_district}'에서 지금 바로 갈 수 있는 다른 빵집들!"
-    )
-
-    other_stores = [
-        s for s in active_bakeries if s["district"] == selected_district
-    ]
-    if other_stores:
-      sample_count = min(4, len(other_stores))
-      picked = random.sample(other_stores, sample_count)
-      st.caption(
-          f"💡 `{selected_district}`에 등록된 총 {len(other_stores)}개의 빵집"
-          " 중 무작위 4곳이야 👇"
-      )
-      for idx, store in enumerate(picked, 1):
-        with st.container(border=True):
-          st.markdown(f"**{idx}. 🥖 {store['name']}**")
-          st.markdown(f"📍 주소: `{store['address']}`")
-    else:
-      st.warning(f"😢 `{selected_district}`에 등록된 영업 빵집 데이터가 없어.")
+  # 재미있는 인사이트 한 줄 요약
+  top1_gu, top1_cnt = top10[0]
+  top2_gu, top2_cnt = top10[1]
+  st.info(
+      f"💡 **데이터 분석 결과:** 서울 전체 영업 중인 제과점"
+      f" **{len(active_bakeries):,}곳** 중 1위는 **{top1_gu}({top1_cnt}개)**,"
+      f" 2위는 **{top2_gu}({top2_cnt}개)**야! 빵지순례 갈 때 참고해 봐 😎"
+  )
 
 st.divider()
 st.caption(
